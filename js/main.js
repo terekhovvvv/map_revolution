@@ -166,14 +166,20 @@ function drawGridOverlay(ctx) {
   ctx.lineWidth = 1;
   ctx.font = 'bold 11px "Segoe UI", sans-serif';
 
-  // Вертикальные линии (целые Y) + подписи номеров у северного конца
+  // Вертикальные линии (целые Y): полилиния через узлы — сетка может
+  // быть изогнута правками, поэтому сэмплируем каждые 0,25 квадрата.
   ctx.textAlign = 'center';
   for (let Y = Math.ceil(b.minY); Y <= Math.floor(b.maxY); Y++) {
-    const n = cal.gridToPixel(b.maxX, Y);   // северный (верхний) конец линии
-    const s = cal.gridToPixel(b.minX, Y);   // южный (нижний) конец
+    ctx.beginPath();
+    for (let X = b.minX; X <= b.maxX + 1e-9; X += 0.25) {
+      const p = cal.gridToPixel(Math.min(X, b.maxX), Y);
+      const s = vp.imageToScreen(p.x, p.y);
+      X === b.minX ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y);
+    }
+    ctx.stroke();
+    // подпись номера у северного (верхнего) конца линии
+    const n = cal.gridToPixel(b.maxX, Y);
     const sn = vp.imageToScreen(n.x, n.y);
-    const ss = vp.imageToScreen(s.x, s.y);
-    ctx.beginPath(); ctx.moveTo(sn.x, sn.y); ctx.lineTo(ss.x, ss.y); ctx.stroke();
     if (sn.y > -20 && sn.y < vp.h + 20) {
       ctx.fillStyle = 'rgba(15,20,26,0.8)';
       ctx.fillRect(sn.x - 10, sn.y - 15, 20, 13);
@@ -185,11 +191,15 @@ function drawGridOverlay(ctx) {
   // Горизонтальные линии (целые X) + подписи номеров у западного конца
   ctx.textAlign = 'left';
   for (let X = Math.ceil(b.minX); X <= Math.floor(b.maxX); X++) {
+    ctx.beginPath();
+    for (let Y = b.minY; Y <= b.maxY + 1e-9; Y += 0.25) {
+      const p = cal.gridToPixel(X, Math.min(Y, b.maxY));
+      const s = vp.imageToScreen(p.x, p.y);
+      Y === b.minY ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y);
+    }
+    ctx.stroke();
     const w = cal.gridToPixel(X, b.minY);   // западный (левый) конец линии
-    const e = cal.gridToPixel(X, b.maxY);   // восточный (правый) конец
     const sw = vp.imageToScreen(w.x, w.y);
-    const se = vp.imageToScreen(e.x, e.y);
-    ctx.beginPath(); ctx.moveTo(sw.x, sw.y); ctx.lineTo(se.x, se.y); ctx.stroke();
     if (sw.x > -30 && sw.x < vp.w + 30 && sw.y > -10 && sw.y < vp.h + 20) {
       ctx.fillStyle = 'rgba(15,20,26,0.8)';
       ctx.fillRect(sw.x - 24, sw.y - 10, 20, 13);
@@ -376,7 +386,8 @@ function updateStatus() {
 function updateCalibStatus() {
   const el = $('stCalib');
   if (App.cal.isReady) {
-    el.textContent = `Сетка: ${App.cal.points.length} опорные · ${App.cal.metersPerSquare} м/кв`;
+    el.textContent = `Сетка: ${App.cal.points.length} опорные · ${App.cal.metersPerSquare} м/кв` +
+      (App.cal.isMeshDeformed() ? ' · линии подогнаны' : '');
     el.classList.add('ok');
   } else {
     el.textContent = 'Сетка не привязана';
@@ -388,7 +399,8 @@ function updateCalibStatus() {
 
 const MODE_NAMES = {
   pan: 'Обзор', ruler: 'Линейка',
-  marker: 'Маркеры', dragMarker: 'Перетаскивание знака'
+  marker: 'Маркеры', dragMarker: 'Перетаскивание знака',
+  gridEdit: 'Правка линий сетки'
 };
 
 function setMode(mode) {
@@ -396,9 +408,11 @@ function setMode(mode) {
   $('btnPan').classList.toggle('active', mode === 'pan');
   $('btnRuler').classList.toggle('active', mode === 'ruler');
   $('btnMarker').classList.toggle('active', mode === 'marker' || mode === 'dragMarker');
+  $('btnGridEdit').classList.toggle('active', mode === 'gridEdit');
   $('stMode').textContent = `Режим: ${MODE_NAMES[mode]}`;
-  App.canvas.classList.toggle('crosshair', ['ruler', 'marker'].includes(mode));
+  App.canvas.classList.toggle('crosshair', ['ruler', 'marker', 'gridEdit'].includes(mode));
   $('markerPanel').classList.toggle('hidden', !(mode === 'marker' || mode === 'dragMarker'));
+  $('gridEditPanel').classList.toggle('hidden', mode !== 'gridEdit');
   updateRulerPanel();
   hideMarkerPop();
   requestRender();
@@ -441,6 +455,13 @@ function bindEvents() {
 
   cv.addEventListener('mousedown', e => {
     hideSearchResults();
+    // Правка сетки: ЛКМ по километровой линии начинает её изгиб (не панорамирование)
+    if (e.button === 0 && App.mode === 'gridEdit') {
+      if (tryStartLineEdit(e)) {
+        cv.setPointerCapture(e.pointerId);
+        return;
+      }
+    }
     // Панорамирование: ЛКМ в режиме обзора или СКМ в любом режиме
     if (e.button === 1 || (e.button === 0 && App.mode === 'pan')) {
       drag = { startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
@@ -452,7 +473,13 @@ function bindEvents() {
   cv.addEventListener('mousemove', e => {
     App.mouse = { sx: e.clientX, sy: e.clientY, inside: true };
 
-    if (drag) {
+    if (lineEdit) {
+      // Изгиб линии: дельта в пикселях изображения от точки захвата
+      const img = App.vp.screenToImage(e.clientX, e.clientY);
+      const dx = img.x - lineEdit.startImg.x, dy = img.y - lineEdit.startImg.y;
+      restoreMesh(App.cal.mesh, lineEdit.snap);
+      App.cal.deformLine(lineEdit.axis, lineEdit.index, lineEdit.at, dx, dy, GE.radius);
+    } else if (drag) {
       const dx = e.clientX - drag.lastX, dy = e.clientY - drag.lastY;
       if (Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) > 4) drag.moved = true;
       App.vp.panBy(dx, dy);
@@ -473,6 +500,14 @@ function bindEvents() {
   });
 
   cv.addEventListener('mouseup', e => {
+    if (lineEdit) {
+      // Отпустили кнопку — правка линии завершена: сохранить меш
+      lineEdit = null;
+      saveMeshEdits();
+      updateCalibStatus();
+      requestRender();
+      return;
+    }
     if (drag) {
       cv.classList.remove('dragging');
       const wasClick = !drag.moved && e.button === 0;
@@ -513,6 +548,13 @@ function bindEvents() {
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       hideSearchResults();
+      if (lineEdit) {                 // отменить текущий изгиб линии
+        restoreMesh(App.cal.mesh, lineEdit.snap);
+        meshUndoStack.pop();          // снимок этой правки не нужен
+        lineEdit = null;
+        requestRender();
+        return;
+      }
       if (App.mode === 'ruler') finishRuler();
       else if (App.mode === 'dragMarker') setMode(App._returnMode);
       else hideMarkerPop();
@@ -579,6 +621,97 @@ function handleClick(e) {
       break;
     }
   }
+}
+
+/* ─────────── Правка линий сетки: изгиб, хранение, отмена ─────────── */
+
+let lineEdit = null;        // {axis:'X'|'Y', index, at, startImg, snap} — активный изгиб
+let meshUndoStack = [];     // снимки меша до каждой правки (макс. 20)
+const GE = { radius: 2 };   // радиус изгиба, в квадратах (гауссово затухание)
+
+function cloneMesh(m) {
+  return { nodeX: m.nodeX.map(r => r.slice()), nodeY: m.nodeY.map(r => r.slice()) };
+}
+function restoreMesh(mesh, snap) {
+  mesh.nodeX = snap.nodeX.map(r => r.slice());
+  mesh.nodeY = snap.nodeY.map(r => r.slice());
+}
+
+/**
+ * Попытка захватить километровую линию под курсором:
+ * ближайшая целая линия сетки в радиусе 0,12 квадрата (~14 px на скане).
+ */
+function tryStartLineEdit(e) {
+  const cal = App.cal;
+  if (!cal.mesh) { toast('Правка доступна после привязки сетки'); return false; }
+  const img = App.vp.screenToImage(e.clientX, e.clientY);
+  if (img.x < 0 || img.y < 0 || img.x > App.imgW || img.y > App.imgH) return false;
+  const g = cal.pixelToGrid(img.x, img.y);
+  if (!cal.insideGrid(g.X, g.Y)) return false;
+  const dX = Math.abs(g.X - Math.round(g.X));   // до горизонтальной линии
+  const dY = Math.abs(g.Y - Math.round(g.Y));   // до вертикальной линии
+  if (Math.min(dX, dY) > 0.12) return false;
+  const axis = dX <= dY ? 'X' : 'Y';
+  const index = Math.round(axis === 'X' ? g.X : g.Y);
+  lineEdit = {
+    axis, index,
+    at: axis === 'X' ? g.Y : g.X,
+    startImg: img,
+    snap: cloneMesh(cal.mesh)
+  };
+  meshUndoStack.push(lineEdit.snap);
+  if (meshUndoStack.length > 20) meshUndoStack.shift();
+  return true;
+}
+
+const MESH_KEY = () => `topomap.meshedit:${App.imageKey}`;
+
+function saveMeshEdits() {
+  try {
+    const { mesh, meshX0, meshY0 } = App.cal;
+    localStorage.setItem(MESH_KEY(), JSON.stringify({
+      originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY
+    }));
+  } catch (err) { console.warn('Не удалось сохранить правки сетки:', err); }
+}
+
+/** Загрузить правки меша; возвращает true, если были сохранённые правки. */
+function loadMeshEdits() {
+  let data = null;
+  try { data = JSON.parse(localStorage.getItem(MESH_KEY()) || 'null'); } catch { /* игнор */ }
+  if (!data) return false;
+  const okDims = App.cal.mesh && Array.isArray(data.nodeX) && Array.isArray(data.nodeY) &&
+    data.nodeX.length === App.cal.mesh.nodeX.length &&
+    data.nodeX[0] && data.nodeX[0].length === App.cal.mesh.nodeX[0].length;
+  if (!okDims) return false;
+  return App.cal.setMesh(data);
+}
+
+function bindGridEditUI() {
+  const updRadius = () => { $('geRadius').textContent = `${GE.radius} кв.`; };
+  $('geRadMinus').addEventListener('click', () => { GE.radius = Math.max(0.5, GE.radius - 0.5); updRadius(); });
+  $('geRadPlus').addEventListener('click', () => { GE.radius = Math.min(6, GE.radius + 0.5); updRadius(); });
+
+  $('geUndo').addEventListener('click', () => {
+    const snap = meshUndoStack.pop();
+    if (!snap) { toast('Нечего отменять'); return; }
+    restoreMesh(App.cal.mesh, snap);
+    saveMeshEdits();
+    updateCalibStatus();
+    requestRender();
+  });
+
+  $('geReset').addEventListener('click', () => {
+    if (!App.cal.isMeshDeformed()) { toast('Правок нет — сетка ровная'); return; }
+    if (confirm('Сбросить все правки линий и вернуть ровную сетку?')) {
+      meshUndoStack.push(cloneMesh(App.cal.mesh));
+      App.cal.initMeshFromAffine(25, 44, 0, 27);
+      saveMeshEdits();
+      updateCalibStatus();
+      requestRender();
+      toast('Правки сброшены — сетка ровная');
+    }
+  });
 }
 
 /* ─────────── Маркеры: UI ─────────── */
@@ -1105,6 +1238,20 @@ function init() {
     $('btnGrid').classList.toggle('active', App.showGrid);
     requestRender();
   });
+  $('btnGridEdit').addEventListener('click', () => {
+    if (!App.cal.isReady) { toast('Сетка не привязана'); return; }
+    const on = App.mode !== 'gridEdit';
+    setMode(on ? 'gridEdit' : 'pan');
+    if (on) {
+      // В правке сетка нужна на виду — включаем оверлей принудительно
+      if (!App.showGrid) {
+        App.showGrid = true;
+        $('btnGrid').classList.add('active');
+      }
+      toast('Потяните красную километровую линию — она изогнётся под скан. Радиус изгиба — в панели слева', 4600);
+      requestRender();
+    }
+  });
   $('btnRulerClear').addEventListener('click', () => {
     App.ruler.clear();
     updateRulerInfo(null);
@@ -1131,6 +1278,7 @@ function init() {
 
   bindEvents();
   bindMarkerUI();
+  bindGridEditUI();
 
   setMode('pan');
   updateStatus();
@@ -1140,9 +1288,14 @@ function init() {
   loadBuiltinMap()
     .then(() => {
       App.vp.fit(App.imgW, App.imgH);
+      // Деформируемый меш для правки линий: инициализация из аффинной базы,
+      // затем подхват сохранённых правок пользователя (localStorage)
+      App.cal.initMeshFromAffine(25, 44, 0, 27);
+      const hadEdits = loadMeshEdits();
       updateCalibStatus();
       requestRender();
-      toast('Карта загружена, сетка привязана (квадрат ≈114 px = 1000 м). Калибровка не требуется ✔', 4200);
+      toast('Карта загружена, сетка привязана (квадрат ≈114 px = 1000 м)' +
+            (hadEdits ? ' · применены ваши правки линий ✔' : '. Калибровка не требуется ✔'), 4200);
     })
     .catch(err => {
       // Фолбэк: файл недоступен (например, открыли index.html без сервера)

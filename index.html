@@ -19,6 +19,7 @@
   <span class="sep"></span>
   <button id="btnFit" title="Показать всю карту целиком">⤢ Вся карта</button>
   <button id="btnGrid" title="Расчётная сетка поверх скана — для визуальной проверки привязки">▦ Сетка</button>
+  <button id="btnGridEdit" title="Изгиб километровых линий сетки: потяните линию, чтобы подогнать под скан">✏️ Линии</button>
 </div>
 
 <!-- ═══════════ Поиск по координатам / квадратам / названиям ═══════════ -->
@@ -63,6 +64,21 @@
   <div class="ruler-row">Дир. угол: <b id="rAz">—</b></div>
   <div class="ruler-hint">ЛКМ — точка · 2×ЛКМ / Esc / ПКМ — завершить</div>
   <button id="btnRulerClear" class="danger">Очистить замеры</button>
+</div>
+
+<!-- ═══════════ Панель правки линий сетки ═══════════ -->
+<div id="gridEditPanel" class="panel hidden">
+  <div class="panel-title">✏️ Правка линий сетки</div>
+  <div class="ruler-row">Радиус изгиба:
+    <span>
+      <button id="geRadMinus" class="ge-btn">−</button>
+      <b id="geRadius">2 кв.</b>
+      <button id="geRadPlus" class="ge-btn">+</button>
+    </span>
+  </div>
+  <div class="ruler-hint">Потяните километровую линию (красную) — она изогнётся, «улитка» и координаты последуют за ней. Esc — отменить текущее перетаскивание.</div>
+  <button id="geUndo">↩ Отменить последнюю правку</button>
+  <button id="geReset" class="danger">Сбросить все правки</button>
 </div>
 
 <!-- ═══════════ Строка состояния (низ экрана) ═══════════ -->

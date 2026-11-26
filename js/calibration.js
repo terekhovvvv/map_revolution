@@ -32,6 +32,18 @@ class Calibration {
     this.matrix = null;   // {a11,a12,b1, a21,a22,b2} сетка → пиксели
     this.inverse = null;  // обратная матрица: пиксели → сетка
     this.bounds = null;   // {minX,maxX,minY,maxY} — охват сетки по опорным точкам
+
+    /**
+     * Деформируемый меш узлов сетки (интерактивная правка линий):
+     *   nodeX[i][j] — px узла (X = meshX0 + i, Y = meshY0 + j),
+     *   nodeY[i][j] — py того же узла.
+     * Если задан, преобразование — билинейная интерполяция по мешу,
+     * аффинная матрица остаётся базой инициализации и «якобианом»
+     * обратной итерации. null — жёсткая аффинная привязка.
+     */
+    this.mesh = null;
+    this.meshX0 = 0;
+    this.meshY0 = 0;
   }
 
   get isReady() { return !!this.matrix; }
@@ -132,17 +144,123 @@ class Calibration {
     return [0, 1, 2].map(i => M[i][3] / M[i][i]);
   }
 
-  /** Сетка (X, Y) → пиксели изображения. */
+  /** Сетка (X, Y) → пиксели изображения (меш, если задан, иначе аффинная). */
   gridToPixel(X, Y) {
+    if (this.mesh) return this._gridToPixelMesh(X, Y);
+    return this._gridToPixelAffine(X, Y);
+  }
+
+  /** Аффинное преобразование сетка → пиксели. */
+  _gridToPixelAffine(X, Y) {
     const m = this.matrix;
     return { x: m.a11 * X + m.a12 * Y + m.b1, y: m.a21 * X + m.a22 * Y + m.b2 };
   }
 
-  /** Пиксели изображения → сетка (X, Y). */
+  /** Пиксели изображения → сетка (X, Y). С мешем — итерации Ньютона. */
   pixelToGrid(px, py) {
+    if (!this.mesh) return this._pixelToGridAffine(px, py);
+    let g = this._pixelToGridAffine(px, py);
+    for (let k = 0; k < 6; k++) {
+      const c = this._gridToPixelMesh(g.X, g.Y);
+      const ex = px - c.x, ey = py - c.y;
+      if (Math.abs(ex) < 0.01 && Math.abs(ey) < 0.01) break;
+      const a = this._gridToPixelAffine(g.X, g.Y);
+      g = this._pixelToGridAffine(px - (c.x - a.x), py - (c.y - a.y));
+    }
+    return g;
+  }
+
+  /** Аффинное преобразование пиксели → сетка. */
+  _pixelToGridAffine(px, py) {
     const m = this.matrix, i = this.inverse;
     const du = px - m.b1, dv = py - m.b2;
     return { X: i.i11 * du + i.i12 * dv, Y: i.i21 * du + i.i22 * dv };
+  }
+
+  /* ─── Деформируемый меш узлов (правка линий сетки) ─── */
+
+  /** Билинейная интерполяция по мешу узлов. */
+  _gridToPixelMesh(X, Y) {
+    const m = this.mesh;
+    const nx = m.nodeX.length, ny = m.nodeX[0].length;
+    const fx = X - this.meshX0, fy = Y - this.meshY0;
+    let i = Math.floor(fx), j = Math.floor(fy);
+    i = Math.min(Math.max(i, 0), nx - 2);
+    j = Math.min(Math.max(j, 0), ny - 2);
+    const v = Math.min(Math.max(fx - i, 0), 1);   // доля ячейки по X
+    const u = Math.min(Math.max(fy - j, 0), 1);   // доля ячейки по Y
+    const x00 = m.nodeX[i][j], x10 = m.nodeX[i + 1][j], x01 = m.nodeX[i][j + 1], x11 = m.nodeX[i + 1][j + 1];
+    const y00 = m.nodeY[i][j], y10 = m.nodeY[i + 1][j], y01 = m.nodeY[i][j + 1], y11 = m.nodeY[i + 1][j + 1];
+    return {
+      x: (x00 * (1 - v) + x10 * v) * (1 - u) + (x01 * (1 - v) + x11 * v) * u,
+      y: (y00 * (1 - v) + y10 * v) * (1 - u) + (y01 * (1 - v) + y11 * v) * u
+    };
+  }
+
+  /** Инициализировать меш из аффинной базы (ровная сетка X=x0..x1, Y=y0..y1). */
+  initMeshFromAffine(x0, x1, y0, y1) {
+    const nodeX = [], nodeY = [];
+    for (let i = 0; i <= x1 - x0; i++) {
+      nodeX.push([]); nodeY.push([]);
+      for (let j = 0; j <= y1 - y0; j++) {
+        const p = this._gridToPixelAffine(x0 + i, y0 + j);
+        nodeX[i].push(p.x);
+        nodeY[i].push(p.y);
+      }
+    }
+    return this.setMesh({ originX: x0, originY: y0, nodeX, nodeY });
+  }
+
+  /** Подключить меш (из localStorage/инициализации). */
+  setMesh(mesh) {
+    if (!mesh || !Array.isArray(mesh.nodeX) || !Array.isArray(mesh.nodeY) ||
+        !mesh.nodeX.length || !Array.isArray(mesh.nodeX[0])) return false;
+    this.mesh = mesh;
+    this.meshX0 = mesh.originX ?? 0;
+    this.meshY0 = mesh.originY ?? 0;
+    return true;
+  }
+
+  /**
+   * Изогнуть километровую линию сетки: сдвинуть её узлы вокруг координаты
+   * at (по другой оси) на (dx, dy) пикселей с гауссовым затуханием sigma
+   * (в квадратах). В точке захвата сдвиг точно (dx, dy), соседние участки
+   * тянутся плавно — линия изгибается, остальные линии не двигаются.
+   * axis: 'X' — горизонтальная линия X=index; 'Y' — вертикальная Y=index.
+   */
+  deformLine(axis, index, at, dx, dy, sigma = 2) {
+    const m = this.mesh;
+    if (!m) return;
+    const s2 = 2 * sigma * sigma;
+    if (axis === 'Y') {
+      const j = index - this.meshY0;
+      if (j < 0 || j >= m.nodeX[0].length) return;
+      for (let i = 0; i < m.nodeX.length; i++) {
+        const w = Math.exp(-((this.meshX0 + i - at) ** 2) / s2);
+        m.nodeX[i][j] += dx * w;
+        m.nodeY[i][j] += dy * w;
+      }
+    } else {
+      const i = index - this.meshX0;
+      if (i < 0 || i >= m.nodeX.length) return;
+      for (let j = 0; j < m.nodeX[0].length; j++) {
+        const w = Math.exp(-((this.meshY0 + j - at) ** 2) / s2);
+        m.nodeX[i][j] += dx * w;
+        m.nodeY[i][j] += dy * w;
+      }
+    }
+  }
+
+  /** Отличается ли меш от ровной аффинной сетки (были ли правки)? */
+  isMeshDeformed() {
+    if (!this.mesh) return false;
+    for (let i = 0; i < this.mesh.nodeX.length; i++)
+      for (let j = 0; j < this.mesh.nodeX[0].length; j++) {
+        const a = this._gridToPixelAffine(this.meshX0 + i, this.meshY0 + j);
+        if (Math.abs(a.x - this.mesh.nodeX[i][j]) > 0.5 ||
+            Math.abs(a.y - this.mesh.nodeY[i][j]) > 0.5) return true;
+      }
+    return false;
   }
 
   /** Средний размер квадрата сетки в пикселях изображения (√|det|). */
