@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TopoMap — интерактивная топографическая карта</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ═══════════ Основная канва: карта + все оверлеи ═══════════ -->
+<canvas id="map"></canvas>
+
+<!-- ═══════════ Верхняя панель инструментов ═══════════ -->
+<div id="toolbar" class="panel">
+  <button id="btnPan"    class="active" title="Режим обзора: панорамирование карты (ЛКМ/СКМ)">✋ Обзор</button>
+  <button id="btnRuler"  title="Линейка: измерение расстояний ломаной линией">📏 Линейка</button>
+  <button id="btnMarker" title="Установка условных обозначений">📍 Маркеры</button>
+  <span class="sep"></span>
+  <button id="btnFit" title="Показать всю карту целиком">⤢ Вся карта</button>
+  <button id="btnGrid" title="Расчётная сетка поверх скана — для визуальной проверки привязки">▦ Сетка</button>
+</div>
+
+<!-- ═══════════ Поиск по координатам / квадратам / названиям ═══════════ -->
+<div id="searchPanel" class="panel">
+  <input id="searchInput" type="text" autocomplete="off"
+         placeholder="Квадрат 36-12 · 36400 12800 · Келли · оз. Киш · Тентек">
+  <button id="btnSearch">Найти</button>
+</div>
+<div id="searchResults" class="panel hidden"></div>
+
+<!-- ═══════════ Палитра маркеров (левая панель) ═══════════ -->
+<div id="markerPanel" class="panel hidden">
+  <div class="panel-title">Условные знаки</div>
+  <div id="markerTypes" class="marker-types">
+    <button data-type="point"    class="mtype active" title="Точка / ориентир">●<span>Точка</span></button>
+    <button data-type="hq"       class="mtype" title="Штаб / база">⚑<span>Штаб</span></button>
+    <button data-type="vehicle"  class="mtype" title="Техника">▣<span>Техника</span></button>
+    <button data-type="obstacle" class="mtype" title="Препятствие">▲<span>Препят.</span></button>
+    <button data-type="obs"      class="mtype" title="Наблюдательный пункт">◉<span>НП</span></button>
+    <button data-type="text"     class="mtype" title="Произвольная текстовая метка">T<span>Текст</span></button>
+  </div>
+  <div class="panel-title">Цвет</div>
+  <div id="markerColors" class="marker-colors">
+    <button data-color="red"   class="mcolor active" style="--c:#e5484d" title="Красный"></button>
+    <button data-color="blue"  class="mcolor" style="--c:#3a86ff" title="Синий"></button>
+    <button data-color="green" class="mcolor" style="--c:#2f9e44" title="Зелёный"></button>
+    <button data-color="black" class="mcolor" style="--c:#222222" title="Чёрный"></button>
+  </div>
+  <div class="panel-title">Обстановка</div>
+  <div class="col">
+    <button id="btnExportMarkers">💾 Сохранить в JSON</button>
+    <button id="btnImportMarkers">📂 Загрузить из JSON</button>
+    <button id="btnClearMarkers" class="danger">🗑 Удалить все знаки</button>
+  </div>
+</div>
+
+<!-- ═══════════ Панель линейки (слева снизу) ═══════════ -->
+<div id="rulerPanel" class="panel hidden">
+  <div class="panel-title">📏 Линейка</div>
+  <div class="ruler-row">Сегмент: <b id="rSeg">—</b></div>
+  <div class="ruler-row">Сумма: <b id="rTotal">—</b></div>
+  <div class="ruler-row">Дир. угол: <b id="rAz">—</b></div>
+  <div class="ruler-hint">ЛКМ — точка · 2×ЛКМ / Esc / ПКМ — завершить</div>
+  <button id="btnRulerClear" class="danger">Очистить замеры</button>
+</div>
+
+<!-- ═══════════ Строка состояния (низ экрана) ═══════════ -->
+<div id="statusbar" class="panel">
+  <span id="stCoords">X: — — —  |  Y: — — —</span>
+  <span id="stSquare">Квадрат: —</span>
+  <span class="sep"></span>
+  <span id="stZoom">Масштаб: —</span>
+  <span id="stMode">Режим: Обзор</span>
+  <span id="stCalib" class="warn">Сетка не привязана</span>
+</div>
+
+<!-- ═══════════ Поповер маркера ═══════════ -->
+<div id="markerPop" class="panel popover hidden">
+  <b id="mpTitle">Маркер</b>
+  <div id="mpCoords" class="hint"></div>
+  <input id="mpLabel" type="text" placeholder="Подпись / комментарий…">
+  <div class="row buttons">
+    <button id="mpDrag">✥ Перетащить</button>
+    <button id="mpDelete" class="danger">Удалить</button>
+    <button id="mpClose">Закрыть</button>
+  </div>
+</div>
+
+<!-- Скрытый input для импорта обстановки -->
+<input type="file" id="importInput" accept="application/json,.json" hidden>
+
+<!-- Тосты -->
+<div id="toast" class="hidden"></div>
+
+<script src="js/viewport.js"></script>
+<script src="js/calibration.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/places.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

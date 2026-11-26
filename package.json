@@ -1,0 +1,9 @@
+{
+  "name": "topo-map-viewer",
+  "version": "1.0.0",
+  "description": "Интерактивная растровая топографическая карта: калибровка сетки, линейка, маркеры, поиск по квадратам",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js"
+  }
+}
