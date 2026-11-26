@@ -219,11 +219,11 @@ function drawSnailOverlay(ctx) {
   const drawNums = sqSize >= 95;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(255, 208, 80, 0.35)';
+  ctx.strokeStyle = 'rgba(139, 0, 0, 0.6)';   // тёмно-красные линии третей
   ctx.lineWidth = 1;
   ctx.font = 'bold 10px "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(255, 212, 121, 0.85)';
+  ctx.fillStyle = 'rgba(139, 0, 0, 0.95)';    // тёмно-красные номера секторов
 
   const toScr = (X, Y) => {
     const p = cal.gridToPixel(X, Y);
