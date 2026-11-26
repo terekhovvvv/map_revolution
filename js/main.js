@@ -69,6 +69,39 @@ function fmtSquare(X, Y) {
   return `${pad2(Math.floor(X))}-${pad2(Math.floor(Y))}`;
 }
 
+/* ── «Улитка»: деление квадрата на 9 секторов ──
+   Нумерация по часовой спирали от северо-западного угла, центр — 9:
+        1 2 3      (северная строка, запад → восток)
+        8 9 4
+        7 6 5      (южная строка)
+   Координата точки: «квадрат-сектор», напр. 41-01-6. */
+const SNAIL = [[1, 2, 3], [8, 9, 4], [7, 6, 5]];
+
+/** Сектор «улитки» (1–9) для точки сетки (gX, gY). */
+function snailSector(gX, gY) {
+  const u = gY - Math.floor(gY);      // доля квадрата запад→восток
+  const v = gX - Math.floor(gX);      // доля квадрата юг→север
+  const col = Math.min(2, Math.floor(u * 3));
+  const row = Math.min(2, Math.floor((1 - v) * 3));
+  return SNAIL[row][col];
+}
+
+/** Границы сектора S квадрата (X, Y) в координатах сетки + центр сектора. */
+function snailSectorBounds(X, Y, S) {
+  let row = 1, col = 1;
+  for (let r = 0; r < 3; r++)
+    for (let c = 0; c < 3; c++)
+      if (SNAIL[r][c] === S) { row = r; col = c; }
+  const x0 = X + (2 - row) / 3, x1 = x0 + 1 / 3;
+  const y0 = Y + col / 3, y1 = y0 + 1 / 3;
+  return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+
+/** Квадрат с сектором «улитки»: (35.45, 14.2) → "35-14-9". */
+function fmtSquareSnail(X, Y) {
+  return `${fmtSquare(X, Y)}-${snailSector(X, Y)}`;
+}
+
 /* ─────────── Цикл отрисовки ─────────── */
 
 let renderQueued = false;
@@ -128,6 +161,7 @@ function drawGridOverlay(ctx) {
   const { vp, cal } = App;
   const b = cal.bounds;
   ctx.save();
+  drawSnailOverlay(ctx);          // «улитка» — под основными линиями сетки
   ctx.strokeStyle = 'rgba(255, 70, 90, 0.55)';
   ctx.lineWidth = 1;
   ctx.font = 'bold 11px "Segoe UI", sans-serif';
@@ -166,6 +200,64 @@ function drawGridOverlay(ctx) {
   ctx.restore();
 }
 
+/**
+ * «Улитка» поверх сетки: каждый квадрат делится на 3×3 сектора
+ * со спиральной нумерацией (см. SNAIL). Рисуется только в режиме «▦ Сетка».
+ * На мелком масштабе пропускается (иначе каша), на среднем — только
+ * линии третей, на крупном — ещё и номера секторов.
+ */
+function drawSnailOverlay(ctx) {
+  const { vp, cal } = App;
+  const b = cal.bounds;
+
+  // Экранный размер квадрата (по стороне центрального квадрата сетки)
+  const cX = (b.minX + b.maxX) / 2, cY = (b.minY + b.maxY) / 2;
+  const pa = cal.gridToPixel(cX, cY), pb = cal.gridToPixel(cX + 1, cY + 1);
+  const sa = vp.imageToScreen(pa.x, pa.y), sb = vp.imageToScreen(pb.x, pb.y);
+  const sqSize = Math.hypot(sb.x - sa.x, sb.y - sa.y) / Math.SQRT2;
+  if (sqSize < 42) return;                    // слишком мелко — только километровая сетка
+  const drawNums = sqSize >= 95;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 208, 80, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.font = 'bold 10px "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255, 212, 121, 0.85)';
+
+  const toScr = (X, Y) => {
+    const p = cal.gridToPixel(X, Y);
+    return vp.imageToScreen(p.x, p.y);
+  };
+
+  for (let X = Math.ceil(b.minX); X < b.maxX; X++) {
+    for (let Y = Math.ceil(b.minY); Y < b.maxY; Y++) {
+      // отсечь квадраты вне экрана (по диагонали с запасом)
+      const c00 = toScr(X, Y), c11 = toScr(X + 1, Y + 1);
+      if (Math.max(c00.x, c11.x) < -60 || Math.min(c00.x, c11.x) > vp.w + 60 ||
+          Math.max(c00.y, c11.y) < -60 || Math.min(c00.y, c11.y) > vp.h + 60) continue;
+
+      // линии третей: две «вертикальные» (по Y) и две «горизонтальные» (по X)
+      for (const k of [1, 2]) {
+        let a = toScr(X, Y + k / 3), e = toScr(X + 1, Y + k / 3);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(e.x, e.y); ctx.stroke();
+        a = toScr(X + k / 3, Y); e = toScr(X + k / 3, Y + 1);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(e.x, e.y); ctx.stroke();
+      }
+
+      if (drawNums) {
+        for (let row = 0; row < 3; row++) {
+          for (let col = 0; col < 3; col++) {
+            const s = toScr(X + (2 - row) / 3 + 1 / 6, Y + col / 3 + 1 / 6);
+            ctx.fillText(String(SNAIL[row][col]), s.x, s.y + 3);
+          }
+        }
+      }
+    }
+  }
+  ctx.restore();
+}
+
 /** Подсветка найденного квадрата / точки (несколько секунд). */
 function drawHighlight(ctx) {
   const h = App.highlight;
@@ -175,7 +267,18 @@ function drawHighlight(ctx) {
     const p = App.cal.gridToPixel(X, Y);
     return App.vp.imageToScreen(p.x, p.y);
   };
-  if (h.kind === 'square') {
+  if (h.kind === 'snail') {
+    // подсветка сектора «улитки» (девятая части квадрата)
+    const sb = snailSectorBounds(h.X, h.Y, h.S);
+    const c = [toScr(sb.x0, sb.y0), toScr(sb.x0, sb.y1), toScr(sb.x1, sb.y1), toScr(sb.x1, sb.y0)];
+    ctx.beginPath();
+    c.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255, 208, 80, 0.3)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd050'; ctx.lineWidth = 2.5;
+    ctx.stroke();
+  } else if (h.kind === 'square') {
     const c = [toScr(h.X, h.Y), toScr(h.X, h.Y + 1), toScr(h.X + 1, h.Y + 1), toScr(h.X + 1, h.Y)];
     ctx.beginPath();
     c.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
@@ -267,7 +370,7 @@ function updateStatus() {
   }
   const mps = cal.metersPerSquare;
   $('stCoords').textContent = `X: ${fmtCoord(g.X, mps)}  |  Y: ${fmtCoord(g.Y, mps)}`;
-  $('stSquare').textContent = `Квадрат: ${fmtSquare(g.X, g.Y)}`;
+  $('stSquare').textContent = `Квадрат: ${fmtSquareSnail(g.X, g.Y)}`;
 }
 
 function updateCalibStatus() {
@@ -490,7 +593,7 @@ function showMarkerPop(m) {
   $('mpTitle').textContent = `${MARKER_TYPE_NAMES[m.type]} #${m.id}`;
   const mps = App.cal.metersPerSquare;
   $('mpCoords').textContent =
-    `X: ${fmtCoord(m.X, mps)}  |  Y: ${fmtCoord(m.Y, mps)}   (кв. ${fmtSquare(m.X, m.Y)})`;
+    `X: ${fmtCoord(m.X, mps)}  |  Y: ${fmtCoord(m.Y, mps)}   (кв. ${fmtSquareSnail(m.X, m.Y)})`;
   $('mpLabel').value = m.label;
   requestRender();
 }
@@ -590,6 +693,7 @@ function bindMarkerUI() {
 /**
  * Разбор строки поиска. Поддерживаемые форматы:
  *   «36-12» / «36 12»          — номер квадрата (X-Y)
+ *   «41-01-6»                  — сектор «улитки» внутри квадрата (X-Y-S)
  *   «36400 12800»              — точные координаты: км·метры (X=36.400, Y=12.800)
  *   «3640012800»               — то же одним числом
  *   «X: 36.4 Y: 12.8»          — явная запись в квадратах (доля — доли квадрата)
@@ -605,6 +709,9 @@ function parseSearch(str) {
   }
   if (m = str.match(/^(\d{10})$/)) {
     return { type: 'point', X: parseInt(m[1].slice(0, 5), 10) / 1000, Y: parseInt(m[1].slice(5), 10) / 1000 };
+  }
+  if (m = str.match(/^(\d{1,2})\s*[-–—]\s*(\d{1,2})\s*[-–—]\s*([1-9])$/)) {
+    return { type: 'snail', X: +m[1], Y: +m[2], S: +m[3] };
   }
   if (m = str.match(/(\d{1,2})\s*[-–—\/\\.,\s]\s*(\d{1,2})/)) {
     return { type: 'square', X: +m[1], Y: +m[2] };
@@ -640,29 +747,26 @@ function findPlaces(query) {
   return scored.map(s => s.p);
 }
 
-/** Центрировать вид на точке сетки и подсветить её. */
-function gotoGridPoint(X, Y, highlightKind, highlightX, highlightY) {
+/**
+ * Центрировать вид на точке сетки и подсветить её.
+ * viewSquares — сколько квадратов примерно помещается в кадр (зум).
+ */
+function gotoGridPoint(X, Y, highlight, viewSquares = 3) {
   const cal = App.cal;
   const px = cal.gridToPixel(X, Y);
-  // Приближаем так, чтобы ~3 квадрата занимали 70% меньшей стороны окна
   const pps = cal.pixelsPerSquare();
   let scale = App.vp.scale;
-  if (pps > 0) scale = (Math.min(App.vp.w, App.vp.h) * 0.7) / (3 * pps);
+  if (pps > 0) scale = (Math.min(App.vp.w, App.vp.h) * 0.7) / (viewSquares * pps);
   App.vp.centerOnImage(px.x, px.y, scale);
-  App.highlight = {
-    kind: highlightKind,
-    X: highlightX, Y: highlightY,
-    until: performance.now() + 4000
-  };
+  App.highlight = { ...highlight, until: performance.now() + 4000 };
   updateStatus();
   requestRender();
 }
 
-/** Переход к именованному объекту с сообщением о квадрате. */
+/** Переход к именованному объекту с сообщением о квадрате и секторе «улитки». */
 function gotoPlace(place) {
-  gotoGridPoint(place.X, place.Y, 'point', place.X, place.Y);
-  const sq = fmtSquare(place.X, place.Y);
-  toast(`${place.name} · ${place.type} · квадрат ${sq}`, 4000);
+  gotoGridPoint(place.X, place.Y, { kind: 'point', X: place.X, Y: place.Y });
+  toast(`${place.name} · ${place.type} · квадрат ${fmtSquareSnail(place.X, place.Y)}`, 4000);
 }
 
 /* ── Дубликаты названий: группировка, «якоря», уточнение квадратом ── */
@@ -781,7 +885,7 @@ function buildPlaceRow(p) {
   name.textContent = p.name;
   const meta = document.createElement('span');
   meta.className = 'sr-meta';
-  meta.textContent = `${p.type} · ${fmtSquare(p.X, p.Y)}`;
+  meta.textContent = `${p.type} · ${fmtSquareSnail(p.X, p.Y)}`;
   item.append(name, meta);
   item.addEventListener('mousedown', e => {
     e.preventDefault();
@@ -835,7 +939,7 @@ function renderSearchResults(matches) {
           sub.className = 'sr-item sr-sub';
           const nm = document.createElement('span');
           nm.className = 'sr-name';
-          nm.textContent = `${i + 1}. квадрат ${fmtSquare(p.X, p.Y)}`;
+          nm.textContent = `${i + 1}. квадрат ${fmtSquareSnail(p.X, p.Y)}`;
           const meta2 = document.createElement('span');
           meta2.className = 'sr-meta';
           const anchor = nearestAnchor(p);
@@ -885,16 +989,21 @@ function doSearch() {
     // пусто — возможно, это обычные координаты («36 12»): проваливаемся дальше
   }
 
-  // 1) Форматы координат / квадратов
+  // 1) Форматы координат / квадратов / секторов «улитки»
   const res = parseSearch(q);
   if (res) {
     hideSearchResults();
     const cal = App.cal;
     if (!cal.isReady) { toast('Сетка не привязана'); return; }
     if (!cal.insideGrid(res.X, res.Y)) { toast('Координаты вне привязанной сетки'); return; }
+    if (res.type === 'snail') {
+      const sb = snailSectorBounds(res.X, res.Y, res.S);
+      gotoGridPoint(sb.cx, sb.cy, { kind: 'snail', X: res.X, Y: res.Y, S: res.S }, 1.6);
+      return;
+    }
     const tX = res.type === 'square' ? res.X + 0.5 : res.X;
     const tY = res.type === 'square' ? res.Y + 0.5 : res.Y;
-    gotoGridPoint(tX, tY, res.type === 'square' ? 'square' : 'point', res.X, res.Y);
+    gotoGridPoint(tX, tY, { kind: res.type === 'square' ? 'square' : 'point', X: res.X, Y: res.Y });
     return;
   }
 
