@@ -383,31 +383,13 @@ function updateStatus() {
   $('stSquare').textContent = `Квадрат: ${fmtSquareSnail(g.X, g.Y)}`;
 }
 
-function updateCalibStatus() {
-  const el = $('stCalib');
-  if (App.cal.isReady) {
-    el.textContent = `Сетка: ${App.cal.metersPerSquare} м/кв` +
-      (App.cal.mesh ? ' · привязана к скану' : '');
-    el.classList.add('ok');
-  } else {
-    el.textContent = 'Сетка не привязана';
-    el.classList.remove('ok');
-  }
-}
-
 /* ─────────── Режимы ─────────── */
-
-const MODE_NAMES = {
-  pan: 'Обзор', ruler: 'Линейка',
-  marker: 'Маркеры', dragMarker: 'Перетаскивание знака'
-};
 
 function setMode(mode) {
   App.mode = mode;
   $('btnPan').classList.toggle('active', mode === 'pan');
   $('btnRuler').classList.toggle('active', mode === 'ruler');
   $('btnMarker').classList.toggle('active', mode === 'marker' || mode === 'dragMarker');
-  $('stMode').textContent = `Режим: ${MODE_NAMES[mode]}`;
   App.canvas.classList.toggle('crosshair', ['ruler', 'marker'].includes(mode));
   $('markerPanel').classList.toggle('hidden', !(mode === 'marker' || mode === 'dragMarker'));
   updateRulerPanel();
@@ -631,6 +613,19 @@ function hideMarkerPop() {
   }
 }
 
+/* ─── Главное меню и справка ─── */
+
+function bindMenuUI() {
+  // «Приступить к работе» → инструкция поверх карты → «Продолжить»
+  $('btnStart').addEventListener('click', () => {
+    $('mainMenu').classList.add('hidden');
+    $('helpModal').classList.remove('hidden');
+  });
+  $('btnHelpClose').addEventListener('click', () => $('helpModal').classList.add('hidden'));
+  // Кнопка «❓ Справка» в тулбаре открывает ту же инструкцию
+  $('btnHelp').addEventListener('click', () => $('helpModal').classList.remove('hidden'));
+}
+
 function bindMarkerUI() {
   $('markerTypes').querySelectorAll('.mtype').forEach(btn =>
     btn.addEventListener('click', () => {
@@ -679,7 +674,7 @@ function bindMarkerUI() {
   // Экспорт в JSON-файл
   $('btnExportMarkers').addEventListener('click', () => {
     const payload = {
-      app: 'topo-map-viewer', version: 1,
+      app: 'ups-beresta', version: 1,
       savedAt: new Date().toISOString(),
       metersPerSquare: App.cal.metersPerSquare,
       markers: App.markers.toJSON()
@@ -1156,6 +1151,7 @@ function init() {
 
   bindEvents();
   bindMarkerUI();
+  bindMenuUI();
 
   setMode('pan');
   updateStatus();
@@ -1168,9 +1164,7 @@ function init() {
       // Базовый меш сетки из js/gridmesh.js (зафиксированное положение)
       // или ровная аффинная сетка как фолбэк
       initBaseMesh();
-      updateCalibStatus();
       requestRender();
-      toast('Карта загружена, сетка привязана к скану ✔', 4200);
     })
     .catch(err => {
       // Фолбэк: файл недоступен (например, открыли index.html без сервера)
@@ -1183,10 +1177,9 @@ function init() {
       App.cal.metersPerSquare = 1000;
       App.cal.solve();
       App.vp.fit(App.imgW, App.imgH);
-      updateCalibStatus();
       requestRender();
       toast('Не удалось открыть «Component 1.png» (' + err.message + '). ' +
-            'Запустите приложение через «npm run dev» или загрузите карту кнопкой «🗺 Карта»', 6000);
+            'Запустите приложение через «npm run dev»', 6000);
     });
 }
 

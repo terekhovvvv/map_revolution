@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TopoMap — интерактивная топографическая карта</title>
+<title>УПС БЕРЕСТА — Учебная топографическая система</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -13,12 +13,16 @@
 
 <!-- ═══════════ Верхняя панель инструментов ═══════════ -->
 <div id="toolbar" class="panel">
+  <span id="brand">УПС БЕРЕСТА</span>
+  <span class="sep"></span>
   <button id="btnPan"    class="active" title="Режим обзора: панорамирование карты (ЛКМ/СКМ)">✋ Обзор</button>
   <button id="btnRuler"  title="Линейка: измерение расстояний ломаной линией">📏 Линейка</button>
   <button id="btnMarker" title="Установка условных обозначений">📍 Маркеры</button>
   <span class="sep"></span>
   <button id="btnFit" title="Показать всю карту целиком">⤢ Вся карта</button>
   <button id="btnGrid" title="Расчётная сетка поверх скана — для визуальной проверки привязки">▦ Сетка</button>
+  <span class="sep"></span>
+  <button id="btnHelp" title="Инструкция по работе с программой">❓ Справка</button>
 </div>
 
 <!-- ═══════════ Поиск по координатам / квадратам / названиям ═══════════ -->
@@ -71,8 +75,6 @@
   <span id="stSquare">Квадрат: —</span>
   <span class="sep"></span>
   <span id="stZoom">Масштаб: —</span>
-  <span id="stMode">Режим: Обзор</span>
-  <span id="stCalib" class="warn">Сетка не привязана</span>
 </div>
 
 <!-- ═══════════ Поповер маркера ═══════════ -->
@@ -89,6 +91,46 @@
 
 <!-- Скрытый input для импорта обстановки -->
 <input type="file" id="importInput" accept="application/json,.json" hidden>
+
+<!-- ═══════════ Главное меню (показывается при запуске) ═══════════ -->
+<div id="mainMenu">
+  <div class="menu-card">
+    <img id="menuEmblem" src="emblem.png" alt="Герб кафедры">
+    <div class="menu-title">УПС БЕРЕСТА</div>
+    <div class="menu-sub">Учебная топографическая система</div>
+    <button id="btnStart" class="primary">Приступить к работе</button>
+  </div>
+</div>
+
+<!-- ═══════════ Окно справки / инструкции ═══════════ -->
+<div id="helpModal" class="hidden">
+  <div class="help-card">
+    <div class="help-title">УПС БЕРЕСТА — инструкция по работе</div>
+    <div class="help-body">
+      <div class="help-sec">🗺 Навигация по карте</div>
+      <div class="help-item">Колесо мыши — масштаб (зум идёт от курсора).</div>
+      <div class="help-item">ЛКМ или СКМ — перемещение карты.</div>
+      <div class="help-item">«⤢ Вся карта» — показать лист целиком.</div>
+
+      <div class="help-sec">🔍 Поиск</div>
+      <div class="help-item">Номер квадрата: <b>2710</b> (или 27-10).</div>
+      <div class="help-item">Сектор «улитки» внутри квадрата: <b>27106</b>.</div>
+      <div class="help-item">Точные координаты: <b>36400 12800</b> (X Y, в метрах).</div>
+      <div class="help-item">Название объекта с карты: <b>Келли</b>, <b>оз. Киш</b>, <b>Тентек</b>, <b>выс. 204</b> — по мере ввода появляются подсказки, программа показывает объект и его квадрат.</div>
+
+      <div class="help-sec">▦ Сетка и координаты</div>
+      <div class="help-item">«▦ Сетка» — показать/скрыть километровую сетку. Каждый квадрат разбит на 9 секторов «улитки» (нумерация 1-2-3 / 8-9-4 / 7-6-5).</div>
+      <div class="help-item">В нижней строке — координаты курсора в метрах и номер квадрата (с сектором — слитно, например 41016).</div>
+
+      <div class="help-sec">📏 Линейка</div>
+      <div class="help-item">«📏 Линейка» → ЛКМ ставит вершины ломаной. Показываются длина сегмента, суммарное расстояние и дирекционный угол. Завершение: двойной клик / Esc / ПКМ.</div>
+
+      <div class="help-sec">📍 Условные знаки</div>
+      <div class="help-item">«📍 Маркеры» → выбрать знак и цвет → клик по карте. Клик по знаку — подпись, координаты, перетаскивание, удаление. Обстановку можно сохранить в JSON и загрузить обратно.</div>
+    </div>
+    <button id="btnHelpClose" class="primary">Продолжить</button>
+  </div>
+</div>
 
 <!-- Тосты -->
 <div id="toast" class="hidden"></div>

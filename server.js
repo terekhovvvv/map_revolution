@@ -50,5 +50,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`TopoMap dev-server: http://${host}:${port}/`);
+  console.log(`УПС БЕРЕСТА dev-server: http://${host}:${port}/`);
 });
