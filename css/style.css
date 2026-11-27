@@ -245,7 +245,7 @@ input:focus { border-color: #4299e1; }
   border: 1px solid rgba(212, 175, 55, 0.35);
   border-radius: 16px;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
-  animation: toastIn 0.25s ease-out;
+  animation: fadeScaleIn 0.25s ease-out;
 }
 #menuEmblem { width: 168px; height: auto; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.55)); }
 .menu-title {
@@ -276,7 +276,7 @@ input:focus { border-color: #4299e1; }
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 14px;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.6);
-  animation: toastIn 0.2s ease-out;
+  animation: fadeScaleIn 0.2s ease-out;
 }
 .help-title {
   font-size: 17px; font-weight: 700; color: #d4af37;
@@ -292,3 +292,4 @@ input:focus { border-color: #4299e1; }
 .help-item b { color: #ffd479; font-weight: 600; }
 #btnHelpClose { align-self: center; font-size: 14px; padding: 9px 30px; }
 .help-body { user-select: text; }
+@keyframes fadeScaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
