@@ -740,7 +740,12 @@ function bindGridEditUI() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY })
       });
-      const data = await resp.json();
+      if (resp.status === 404) {
+        throw new Error('dev-сервер старой версии — перезапустите «npm run dev» (закройте и заново откройте превью) и повторите');
+      }
+      const text = await resp.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('ответ сервера: ' + text.slice(0, 80)); }
       if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
       try { localStorage.removeItem(MESH_KEY()); } catch { /* игнор */ }
       App.hasMeshEdits = false;
