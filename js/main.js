@@ -36,7 +36,8 @@ const App = {
   markerColor: 'red',
 
   highlight: null,             // {kind:'square'|'point', X, Y, until} | {kind:'points', pts:[{X,Y}], until}
-  showGrid: false              // поверх скана: расчётная сетка для визуальной проверки
+  showGrid: false,             // поверх скана: расчётная сетка для визуальной проверки
+  hasMeshEdits: false          // есть ли незафиксированные правки линий (localStorage)
 };
 
 /* ─────────── Утилиты ─────────── */
@@ -386,8 +387,9 @@ function updateStatus() {
 function updateCalibStatus() {
   const el = $('stCalib');
   if (App.cal.isReady) {
-    el.textContent = `Сетка: ${App.cal.points.length} опорные · ${App.cal.metersPerSquare} м/кв` +
-      (App.cal.isMeshDeformed() ? ' · линии подогнаны' : '');
+    el.textContent = `Сетка: ${App.cal.metersPerSquare} м/кв` +
+      ((typeof GRID_MESH !== 'undefined' && GRID_MESH && App.cal.mesh) ? ' · база зафиксирована' : '') +
+      (App.hasMeshEdits ? ' · есть правки' : '');
     el.classList.add('ok');
   } else {
     el.textContent = 'Сетка не привязана';
@@ -672,6 +674,7 @@ function saveMeshEdits() {
     localStorage.setItem(MESH_KEY(), JSON.stringify({
       originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY
     }));
+    App.hasMeshEdits = true;
   } catch (err) { console.warn('Не удалось сохранить правки сетки:', err); }
 }
 
@@ -685,6 +688,18 @@ function loadMeshEdits() {
     data.nodeX[0] && data.nodeX[0].length === App.cal.mesh.nodeX[0].length;
   if (!okDims) return false;
   return App.cal.setMesh(data);
+}
+
+/**
+ * Инициализация базового меша: зафиксированное положение из js/gridmesh.js,
+ * если файл есть, иначе — ровная аффинная сетка.
+ */
+function initBaseMesh() {
+  if (typeof GRID_MESH !== 'undefined' && GRID_MESH && Array.isArray(GRID_MESH.nodeX)) {
+    App.cal.setMesh(GRID_MESH);
+  } else {
+    App.cal.initMeshFromAffine(25, 44, 0, 27);
+  }
 }
 
 function bindGridEditUI() {
@@ -702,14 +717,39 @@ function bindGridEditUI() {
   });
 
   $('geReset').addEventListener('click', () => {
-    if (!App.cal.isMeshDeformed()) { toast('Правок нет — сетка ровная'); return; }
-    if (confirm('Сбросить все правки линий и вернуть ровную сетку?')) {
+    if (!App.hasMeshEdits) { toast('Правок нет — сетка в базовом положении'); return; }
+    if (confirm('Сбросить все незафиксированные правки и вернуть базовую сетку?')) {
       meshUndoStack.push(cloneMesh(App.cal.mesh));
-      App.cal.initMeshFromAffine(25, 44, 0, 27);
-      saveMeshEdits();
+      initBaseMesh();
+      try { localStorage.removeItem(MESH_KEY()); } catch { /* игнор */ }
+      App.hasMeshEdits = false;
       updateCalibStatus();
       requestRender();
-      toast('Правки сброшены — сетка ровная');
+      toast('Правки сброшены — сетка в базовом положении');
+    }
+  });
+
+  // «Зафиксировать как базовую»: текущий меш → js/gridmesh.js через сервер
+  $('geBake').addEventListener('click', async () => {
+    if (!confirm('Сделать текущее положение сетки новым БАЗОВЫМ?\n\n' +
+                 'Оно запишется в js/gridmesh.js, а правки из localStorage очистятся.')) return;
+    try {
+      const { mesh, meshX0, meshY0 } = App.cal;
+      const resp = await fetch('/api/save-mesh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+      try { localStorage.removeItem(MESH_KEY()); } catch { /* игнор */ }
+      App.hasMeshEdits = false;
+      meshUndoStack = [];
+      updateCalibStatus();
+      toast(`Сетка зафиксирована как базовая (${data.nodes} узлов → js/gridmesh.js). Перезагрузите страницу`, 5200);
+    } catch (err) {
+      toast('Не удалось записать gridmesh.js: ' + err.message +
+            '. Страница открыта через «npm run dev»?', 5200);
     }
   });
 }
@@ -1288,14 +1328,15 @@ function init() {
   loadBuiltinMap()
     .then(() => {
       App.vp.fit(App.imgW, App.imgH);
-      // Деформируемый меш для правки линий: инициализация из аффинной базы,
-      // затем подхват сохранённых правок пользователя (localStorage)
-      App.cal.initMeshFromAffine(25, 44, 0, 27);
-      const hadEdits = loadMeshEdits();
+      // Деформируемый меш для правки линий: база из js/gridmesh.js
+      // (зафиксированное положение) или ровная аффинная сетка,
+      // затем подхват незафиксированных правок (localStorage)
+      initBaseMesh();
+      App.hasMeshEdits = loadMeshEdits();
       updateCalibStatus();
       requestRender();
       toast('Карта загружена, сетка привязана (квадрат ≈114 px = 1000 м)' +
-            (hadEdits ? ' · применены ваши правки линий ✔' : '. Калибровка не требуется ✔'), 4200);
+            (App.hasMeshEdits ? ' · применены ваши правки линий ✔' : ' ✔'), 4200);
     })
     .catch(err => {
       // Фолбэк: файл недоступен (например, открыли index.html без сервера)
