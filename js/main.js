@@ -36,8 +36,7 @@ const App = {
   markerColor: 'red',
 
   highlight: null,             // {kind:'square'|'point', X, Y, until} | {kind:'points', pts:[{X,Y}], until}
-  showGrid: false,             // поверх скана: расчётная сетка для визуальной проверки
-  hasMeshEdits: false          // есть ли незафиксированные правки линий (localStorage)
+  showGrid: false              // поверх скана: расчётная сетка для визуальной проверки
 };
 
 /* ─────────── Утилиты ─────────── */
@@ -388,8 +387,7 @@ function updateCalibStatus() {
   const el = $('stCalib');
   if (App.cal.isReady) {
     el.textContent = `Сетка: ${App.cal.metersPerSquare} м/кв` +
-      ((typeof GRID_MESH !== 'undefined' && GRID_MESH && App.cal.mesh) ? ' · база зафиксирована' : '') +
-      (App.hasMeshEdits ? ' · есть правки' : '');
+      (App.cal.mesh ? ' · привязана к скану' : '');
     el.classList.add('ok');
   } else {
     el.textContent = 'Сетка не привязана';
@@ -401,8 +399,7 @@ function updateCalibStatus() {
 
 const MODE_NAMES = {
   pan: 'Обзор', ruler: 'Линейка',
-  marker: 'Маркеры', dragMarker: 'Перетаскивание знака',
-  gridEdit: 'Правка линий сетки'
+  marker: 'Маркеры', dragMarker: 'Перетаскивание знака'
 };
 
 function setMode(mode) {
@@ -410,11 +407,9 @@ function setMode(mode) {
   $('btnPan').classList.toggle('active', mode === 'pan');
   $('btnRuler').classList.toggle('active', mode === 'ruler');
   $('btnMarker').classList.toggle('active', mode === 'marker' || mode === 'dragMarker');
-  $('btnGridEdit').classList.toggle('active', mode === 'gridEdit');
   $('stMode').textContent = `Режим: ${MODE_NAMES[mode]}`;
-  App.canvas.classList.toggle('crosshair', ['ruler', 'marker', 'gridEdit'].includes(mode));
+  App.canvas.classList.toggle('crosshair', ['ruler', 'marker'].includes(mode));
   $('markerPanel').classList.toggle('hidden', !(mode === 'marker' || mode === 'dragMarker'));
-  $('gridEditPanel').classList.toggle('hidden', mode !== 'gridEdit');
   updateRulerPanel();
   hideMarkerPop();
   requestRender();
@@ -457,13 +452,6 @@ function bindEvents() {
 
   cv.addEventListener('mousedown', e => {
     hideSearchResults();
-    // Правка сетки: ЛКМ по километровой линии начинает её изгиб (не панорамирование)
-    if (e.button === 0 && App.mode === 'gridEdit') {
-      if (tryStartLineEdit(e)) {
-        cv.setPointerCapture(e.pointerId);
-        return;
-      }
-    }
     // Панорамирование: ЛКМ в режиме обзора или СКМ в любом режиме
     if (e.button === 1 || (e.button === 0 && App.mode === 'pan')) {
       drag = { startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
@@ -475,13 +463,7 @@ function bindEvents() {
   cv.addEventListener('mousemove', e => {
     App.mouse = { sx: e.clientX, sy: e.clientY, inside: true };
 
-    if (lineEdit) {
-      // Изгиб линии: дельта в пикселях изображения от точки захвата
-      const img = App.vp.screenToImage(e.clientX, e.clientY);
-      const dx = img.x - lineEdit.startImg.x, dy = img.y - lineEdit.startImg.y;
-      restoreMesh(App.cal.mesh, lineEdit.snap);
-      App.cal.deformLine(lineEdit.axis, lineEdit.index, lineEdit.at, dx, dy, GE.radius);
-    } else if (drag) {
+    if (drag) {
       const dx = e.clientX - drag.lastX, dy = e.clientY - drag.lastY;
       if (Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) > 4) drag.moved = true;
       App.vp.panBy(dx, dy);
@@ -502,14 +484,6 @@ function bindEvents() {
   });
 
   cv.addEventListener('mouseup', e => {
-    if (lineEdit) {
-      // Отпустили кнопку — правка линии завершена: сохранить меш
-      lineEdit = null;
-      saveMeshEdits();
-      updateCalibStatus();
-      requestRender();
-      return;
-    }
     if (drag) {
       cv.classList.remove('dragging');
       const wasClick = !drag.moved && e.button === 0;
@@ -550,13 +524,6 @@ function bindEvents() {
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       hideSearchResults();
-      if (lineEdit) {                 // отменить текущий изгиб линии
-        restoreMesh(App.cal.mesh, lineEdit.snap);
-        meshUndoStack.pop();          // снимок этой правки не нужен
-        lineEdit = null;
-        requestRender();
-        return;
-      }
       if (App.mode === 'ruler') finishRuler();
       else if (App.mode === 'dragMarker') setMode(App._returnMode);
       else hideMarkerPop();
@@ -625,74 +592,11 @@ function handleClick(e) {
   }
 }
 
-/* ─────────── Правка линий сетки: изгиб, хранение, отмена ─────────── */
-
-let lineEdit = null;        // {axis:'X'|'Y', index, at, startImg, snap} — активный изгиб
-let meshUndoStack = [];     // снимки меша до каждой правки (макс. 20)
-const GE = { radius: 2 };   // радиус изгиба, в квадратах (гауссово затухание)
-
-function cloneMesh(m) {
-  return { nodeX: m.nodeX.map(r => r.slice()), nodeY: m.nodeY.map(r => r.slice()) };
-}
-function restoreMesh(mesh, snap) {
-  mesh.nodeX = snap.nodeX.map(r => r.slice());
-  mesh.nodeY = snap.nodeY.map(r => r.slice());
-}
+/* ─────────── Базовый меш сетки ─────────── */
 
 /**
- * Попытка захватить километровую линию под курсором:
- * ближайшая целая линия сетки в радиусе 0,12 квадрата (~14 px на скане).
- */
-function tryStartLineEdit(e) {
-  const cal = App.cal;
-  if (!cal.mesh) { toast('Правка доступна после привязки сетки'); return false; }
-  const img = App.vp.screenToImage(e.clientX, e.clientY);
-  if (img.x < 0 || img.y < 0 || img.x > App.imgW || img.y > App.imgH) return false;
-  const g = cal.pixelToGrid(img.x, img.y);
-  if (!cal.insideGrid(g.X, g.Y)) return false;
-  const dX = Math.abs(g.X - Math.round(g.X));   // до горизонтальной линии
-  const dY = Math.abs(g.Y - Math.round(g.Y));   // до вертикальной линии
-  if (Math.min(dX, dY) > 0.12) return false;
-  const axis = dX <= dY ? 'X' : 'Y';
-  const index = Math.round(axis === 'X' ? g.X : g.Y);
-  lineEdit = {
-    axis, index,
-    at: axis === 'X' ? g.Y : g.X,
-    startImg: img,
-    snap: cloneMesh(cal.mesh)
-  };
-  meshUndoStack.push(lineEdit.snap);
-  if (meshUndoStack.length > 20) meshUndoStack.shift();
-  return true;
-}
-
-const MESH_KEY = () => `topomap.meshedit:${App.imageKey}`;
-
-function saveMeshEdits() {
-  try {
-    const { mesh, meshX0, meshY0 } = App.cal;
-    localStorage.setItem(MESH_KEY(), JSON.stringify({
-      originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY
-    }));
-    App.hasMeshEdits = true;
-  } catch (err) { console.warn('Не удалось сохранить правки сетки:', err); }
-}
-
-/** Загрузить правки меша; возвращает true, если были сохранённые правки. */
-function loadMeshEdits() {
-  let data = null;
-  try { data = JSON.parse(localStorage.getItem(MESH_KEY()) || 'null'); } catch { /* игнор */ }
-  if (!data) return false;
-  const okDims = App.cal.mesh && Array.isArray(data.nodeX) && Array.isArray(data.nodeY) &&
-    data.nodeX.length === App.cal.mesh.nodeX.length &&
-    data.nodeX[0] && data.nodeX[0].length === App.cal.mesh.nodeX[0].length;
-  if (!okDims) return false;
-  return App.cal.setMesh(data);
-}
-
-/**
- * Инициализация базового меша: зафиксированное положение из js/gridmesh.js,
- * если файл есть, иначе — ровная аффинная сетка.
+ * Инициализация меша сетки: зафиксированное пользователем положение
+ * из js/gridmesh.js; если файла нет — ровная аффинная сетка как фолбэк.
  */
 function initBaseMesh() {
   if (typeof GRID_MESH !== 'undefined' && GRID_MESH && Array.isArray(GRID_MESH.nodeX)) {
@@ -700,99 +604,6 @@ function initBaseMesh() {
   } else {
     App.cal.initMeshFromAffine(25, 44, 0, 27);
   }
-}
-
-function bindGridEditUI() {
-  const updRadius = () => { $('geRadius').textContent = `${GE.radius} кв.`; };
-  $('geRadMinus').addEventListener('click', () => { GE.radius = Math.max(0.5, GE.radius - 0.5); updRadius(); });
-  $('geRadPlus').addEventListener('click', () => { GE.radius = Math.min(6, GE.radius + 0.5); updRadius(); });
-
-  $('geUndo').addEventListener('click', () => {
-    const snap = meshUndoStack.pop();
-    if (!snap) { toast('Нечего отменять'); return; }
-    restoreMesh(App.cal.mesh, snap);
-    saveMeshEdits();
-    updateCalibStatus();
-    requestRender();
-  });
-
-  $('geReset').addEventListener('click', () => {
-    if (!App.hasMeshEdits) { toast('Правок нет — сетка в базовом положении'); return; }
-    if (confirm('Сбросить все незафиксированные правки и вернуть базовую сетку?')) {
-      meshUndoStack.push(cloneMesh(App.cal.mesh));
-      initBaseMesh();
-      try { localStorage.removeItem(MESH_KEY()); } catch { /* игнор */ }
-      App.hasMeshEdits = false;
-      updateCalibStatus();
-      requestRender();
-      toast('Правки сброшены — сетка в базовом положении');
-    }
-  });
-
-  // «Зафиксировать как базовую»: текущий меш → js/gridmesh.js через сервер
-  $('geBake').addEventListener('click', async () => {
-    if (!confirm('Сделать текущее положение сетки новым БАЗОВЫМ?\n\n' +
-                 'Оно запишется в js/gridmesh.js, а правки из localStorage очистятся.')) return;
-    try {
-      const { mesh, meshX0, meshY0 } = App.cal;
-      const resp = await fetch('/api/save-mesh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY })
-      });
-      if (resp.status === 404) {
-        throw new Error('dev-сервер старой версии — перезапустите «npm run dev» (закройте и заново откройте превью) и повторите');
-      }
-      const text = await resp.text();
-      let data;
-      try { data = JSON.parse(text); } catch { throw new Error('ответ сервера: ' + text.slice(0, 80)); }
-      if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
-      try { localStorage.removeItem(MESH_KEY()); } catch { /* игнор */ }
-      App.hasMeshEdits = false;
-      meshUndoStack = [];
-      updateCalibStatus();
-      toast(`Сетка зафиксирована как базовая (${data.nodes} узлов → js/gridmesh.js). Перезагрузите страницу`, 5200);
-    } catch (err) {
-      toast('Не удалось записать gridmesh.js: ' + err.message, 5600);
-    }
-  });
-
-  // Экспорт текущего положения сетки в JSON-файл (резервная копия / перенос)
-  $('geExport').addEventListener('click', () => {
-    const { mesh, meshX0, meshY0 } = App.cal;
-    const payload = { originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY };
-    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-    const a = document.createElement('a');
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
-    a.href = URL.createObjectURL(blob);
-    a.download = `gridmesh_${stamp}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    toast('Сетка экспортирована в JSON — файл можно прислать для фиксации');
-  });
-
-  // Импорт сетки из JSON-файла (восстановление резервной копии)
-  $('geImport').addEventListener('click', () => $('meshImportInput').click());
-  $('meshImportInput').addEventListener('change', async e => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      const okDims = App.cal.mesh && Array.isArray(data.nodeX) && Array.isArray(data.nodeY) &&
-        data.nodeX.length === App.cal.mesh.nodeX.length &&
-        data.nodeX[0] && data.nodeX[0].length === App.cal.mesh.nodeX[0].length;
-      if (!okDims) throw new Error('размеры меша не совпадают с сеткой карты');
-      meshUndoStack.push(cloneMesh(App.cal.mesh));
-      App.cal.setMesh(data);
-      saveMeshEdits();
-      updateCalibStatus();
-      requestRender();
-      toast('Сетка импортирована из файла ✔');
-    } catch (err) {
-      toast('Ошибка импорта сетки: ' + err.message, 4600);
-    }
-  });
 }
 
 /* ─────────── Маркеры: UI ─────────── */
@@ -1319,20 +1130,6 @@ function init() {
     $('btnGrid').classList.toggle('active', App.showGrid);
     requestRender();
   });
-  $('btnGridEdit').addEventListener('click', () => {
-    if (!App.cal.isReady) { toast('Сетка не привязана'); return; }
-    const on = App.mode !== 'gridEdit';
-    setMode(on ? 'gridEdit' : 'pan');
-    if (on) {
-      // В правке сетка нужна на виду — включаем оверлей принудительно
-      if (!App.showGrid) {
-        App.showGrid = true;
-        $('btnGrid').classList.add('active');
-      }
-      toast('Потяните красную километровую линию — она изогнётся под скан. Радиус изгиба — в панели слева', 4600);
-      requestRender();
-    }
-  });
   $('btnRulerClear').addEventListener('click', () => {
     App.ruler.clear();
     updateRulerInfo(null);
@@ -1359,7 +1156,6 @@ function init() {
 
   bindEvents();
   bindMarkerUI();
-  bindGridEditUI();
 
   setMode('pan');
   updateStatus();
@@ -1369,15 +1165,12 @@ function init() {
   loadBuiltinMap()
     .then(() => {
       App.vp.fit(App.imgW, App.imgH);
-      // Деформируемый меш для правки линий: база из js/gridmesh.js
-      // (зафиксированное положение) или ровная аффинная сетка,
-      // затем подхват незафиксированных правок (localStorage)
+      // Базовый меш сетки из js/gridmesh.js (зафиксированное положение)
+      // или ровная аффинная сетка как фолбэк
       initBaseMesh();
-      App.hasMeshEdits = loadMeshEdits();
       updateCalibStatus();
       requestRender();
-      toast('Карта загружена, сетка привязана (квадрат ≈114 px = 1000 м)' +
-            (App.hasMeshEdits ? ' · применены ваши правки линий ✔' : ' ✔'), 4200);
+      toast('Карта загружена, сетка привязана к скану ✔', 4200);
     })
     .catch(err => {
       // Фолбэк: файл недоступен (например, открыли index.html без сервера)

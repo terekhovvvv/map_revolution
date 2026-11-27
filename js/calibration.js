@@ -221,48 +221,6 @@ class Calibration {
     return true;
   }
 
-  /**
-   * Изогнуть километровую линию сетки: сдвинуть её узлы вокруг координаты
-   * at (по другой оси) на (dx, dy) пикселей с гауссовым затуханием sigma
-   * (в квадратах). В точке захвата сдвиг точно (dx, dy), соседние участки
-   * тянутся плавно — линия изгибается, остальные линии не двигаются.
-   * axis: 'X' — горизонтальная линия X=index; 'Y' — вертикальная Y=index.
-   */
-  deformLine(axis, index, at, dx, dy, sigma = 2) {
-    const m = this.mesh;
-    if (!m) return;
-    const s2 = 2 * sigma * sigma;
-    if (axis === 'Y') {
-      const j = index - this.meshY0;
-      if (j < 0 || j >= m.nodeX[0].length) return;
-      for (let i = 0; i < m.nodeX.length; i++) {
-        const w = Math.exp(-((this.meshX0 + i - at) ** 2) / s2);
-        m.nodeX[i][j] += dx * w;
-        m.nodeY[i][j] += dy * w;
-      }
-    } else {
-      const i = index - this.meshX0;
-      if (i < 0 || i >= m.nodeX.length) return;
-      for (let j = 0; j < m.nodeX[0].length; j++) {
-        const w = Math.exp(-((this.meshY0 + j - at) ** 2) / s2);
-        m.nodeX[i][j] += dx * w;
-        m.nodeY[i][j] += dy * w;
-      }
-    }
-  }
-
-  /** Отличается ли меш от ровной аффинной сетки (были ли правки)? */
-  isMeshDeformed() {
-    if (!this.mesh) return false;
-    for (let i = 0; i < this.mesh.nodeX.length; i++)
-      for (let j = 0; j < this.mesh.nodeX[0].length; j++) {
-        const a = this._gridToPixelAffine(this.meshX0 + i, this.meshY0 + j);
-        if (Math.abs(a.x - this.mesh.nodeX[i][j]) > 0.5 ||
-            Math.abs(a.y - this.mesh.nodeY[i][j]) > 0.5) return true;
-      }
-    return false;
-  }
-
   /** Средний размер квадрата сетки в пикселях изображения (√|det|). */
   pixelsPerSquare() {
     if (!this.matrix) return 0;
