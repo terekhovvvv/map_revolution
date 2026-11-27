@@ -42,7 +42,7 @@ d.polygon(star(120 * S, 92 * S, 44 * S, 18 * S), fill=GOLD)
 import matplotlib
 font_path = matplotlib.get_data_path() + "/fonts/ttf/DejaVuSans-Bold.ttf"
 f = ImageFont.truetype(font_path, 30 * S)
-text = "УПС"
+text = "УТС"
 tw = d.textlength(text, font=f)
 d.text(((W * S - tw) / 2, 148 * S), text, font=f, fill=GOLD)
 
