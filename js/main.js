@@ -753,8 +753,44 @@ function bindGridEditUI() {
       updateCalibStatus();
       toast(`Сетка зафиксирована как базовая (${data.nodes} узлов → js/gridmesh.js). Перезагрузите страницу`, 5200);
     } catch (err) {
-      toast('Не удалось записать gridmesh.js: ' + err.message +
-            '. Страница открыта через «npm run dev»?', 5200);
+      toast('Не удалось записать gridmesh.js: ' + err.message, 5600);
+    }
+  });
+
+  // Экспорт текущего положения сетки в JSON-файл (резервная копия / перенос)
+  $('geExport').addEventListener('click', () => {
+    const { mesh, meshX0, meshY0 } = App.cal;
+    const payload = { originX: meshX0, originY: meshY0, nodeX: mesh.nodeX, nodeY: mesh.nodeY };
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+    a.href = URL.createObjectURL(blob);
+    a.download = `gridmesh_${stamp}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Сетка экспортирована в JSON — файл можно прислать для фиксации');
+  });
+
+  // Импорт сетки из JSON-файла (восстановление резервной копии)
+  $('geImport').addEventListener('click', () => $('meshImportInput').click());
+  $('meshImportInput').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const okDims = App.cal.mesh && Array.isArray(data.nodeX) && Array.isArray(data.nodeY) &&
+        data.nodeX.length === App.cal.mesh.nodeX.length &&
+        data.nodeX[0] && data.nodeX[0].length === App.cal.mesh.nodeX[0].length;
+      if (!okDims) throw new Error('размеры меша не совпадают с сеткой карты');
+      meshUndoStack.push(cloneMesh(App.cal.mesh));
+      App.cal.setMesh(data);
+      saveMeshEdits();
+      updateCalibStatus();
+      requestRender();
+      toast('Сетка импортирована из файла ✔');
+    } catch (err) {
+      toast('Ошибка импорта сетки: ' + err.message, 4600);
     }
   });
 }
