@@ -36,15 +36,7 @@ def star(cx, cy, r_out, r_in, n=5):
         pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
     return pts
 
-d.polygon(star(120 * S, 92 * S, 44 * S, 18 * S), fill=GOLD)
-
-# надпись
-import matplotlib
-font_path = matplotlib.get_data_path() + "/fonts/ttf/DejaVuSans-Bold.ttf"
-f = ImageFont.truetype(font_path, 30 * S)
-text = "УТС"
-tw = d.textlength(text, font=f)
-d.text(((W * S - tw) / 2, 148 * S), text, font=f, fill=GOLD)
+d.polygon(star(120 * S, 105 * S, 52 * S, 21 * S), fill=GOLD)
 
 # обрезать всё по форме щита
 body.putalpha(mask)

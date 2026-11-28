@@ -50,5 +50,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`УТС БЕРЕСТА dev-server: http://${host}:${port}/`);
+  console.log(`БЕРЕСТА dev-server: http://${host}:${port}/`);
 });

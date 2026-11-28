@@ -673,7 +673,7 @@ function bindMarkerUI() {
   // Экспорт в JSON-файл
   $('btnExportMarkers').addEventListener('click', () => {
     const payload = {
-      app: 'uts-beresta', version: 1,
+      app: 'beresta', version: 1,
       savedAt: new Date().toISOString(),
       metersPerSquare: App.cal.metersPerSquare,
       markers: App.markers.toJSON()
