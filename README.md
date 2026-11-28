@@ -17,9 +17,15 @@
 
 ## Запуск
 
-**Windows — двойной клик по `beresta.bat`.** Всё: сервер поднимется сам
-и откроет приложение в браузере. Устанавливать ничего не нужно — портативный
-Node.js лежит в папке `runtime/` (если её нет, батник использует системный Node.js).
+**Windows — двойной клик по `beresta.exe`** (иконка — герб кафедры) или по
+`beresta.bat`. Сервер поднимется сам и откроет приложение в браузере.
+Устанавливать ничего не нужно — портативный Node.js лежит в папке `runtime/`
+(если её нет, используется системный Node.js). Исходник лаунчера —
+`BerestaLauncher.cs`, пересборка:
+
+```bat
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe -nologo -target:exe -win32icon:emblem.ico -out:beresta.exe BerestaLauncher.cs
+```
 
 Вручную:
 
