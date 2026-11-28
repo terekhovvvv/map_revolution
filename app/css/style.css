@@ -253,8 +253,14 @@ input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(212, 175, 55
   padding: 10px 22px;
   font-variant-numeric: tabular-nums;
 }
-#stCoords { color: var(--gold-soft); font-weight: 600; min-width: 240px; font-family: var(--font-mono); font-size: 14px; }
-#stSquare { color: var(--gold); min-width: 120px; font-weight: 600; }
+#stCoords, #stSquare {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gold-soft);
+}
+#stCoords { min-width: 240px; }
+#stSquare { min-width: 120px; }
 
 /* ─── Поповеры ────────────────────────────────────────────── */
 .popover { z-index: 60; width: 265px; padding: 15px; }
