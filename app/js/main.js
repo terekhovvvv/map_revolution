@@ -1068,7 +1068,7 @@ function doSearch() {
  *   • масштаб сетки: 1 квадрат = 1000 м (карта 1:25 000).
  * Ручная калибровка не требуется — сетка привязана жёстко.
  */
-const BUILTIN_MAP_URL = 'Component 1.png';
+const BUILTIN_MAP_URL = 'app/img/Component 1.png';
 const FIXED_GRID = {
   Y_FIRST: 0,  PX_FIRST: 53.5, STEP_X: 114.25, // px = PX_FIRST + (Y − Y_FIRST)·STEP_X
   X_FIRST: 44, PY_FIRST: 62,   STEP_Y: 114.06  // py = PY_FIRST + (X_FIRST − X)·STEP_Y

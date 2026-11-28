@@ -51,5 +51,5 @@ inner_s = [(x * S, y * S) for x, y in inner]
 d2.line(inner_s + [inner_s[0]], fill=GOLD, width=2 * S, joint="curve")
 
 img = img.resize((W, H), Image.LANCZOS)
-img.save("emblem.png")
+img.save("app/img/emblem.png")  # запускать из корня проекта
 print("emblem.png сохранён:", img.size)
