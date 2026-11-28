@@ -3,14 +3,18 @@ chcp 65001 >nul
 title УТС БЕРЕСТА
 cd /d "%~dp0"
 
-where node >nul 2>&1
-if errorlevel 1 (
-  echo.
-  echo   [ОШИБКА] Node.js не найден!
-  echo   Установите Node.js с https://nodejs.org и запустите снова.
-  echo.
-  pause
-  exit /b 1
+rem Берём портативный Node.js из папки runtime, если его нет — системный
+set "NODE=%~dp0runtime\node.exe"
+if not exist "%NODE%" (
+  where node >nul 2>&1
+  if errorlevel 1 (
+    echo.
+    echo   [ОШИБКА] Node.js не найден ни в папке runtime, ни в системе!
+    echo.
+    pause
+    exit /b 1
+  )
+  set "NODE=node"
 )
 
 echo.
@@ -25,5 +29,5 @@ echo.
 rem Браузер открываем с задержкой 2 сек, чтобы сервер успел подняться
 start "" /min cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:7100/"
 
-node server.js
+"%NODE%" server.js
 pause
