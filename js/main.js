@@ -354,7 +354,6 @@ function drawRulerTooltip(ctx, hover) {
 
 function updateStatus() {
   const { vp, cal, mouse } = App;
-  $('stZoom').textContent = `Масштаб: ${(vp.scale * 100).toFixed(vp.scale < 1 ? 1 : 0)}%`;
 
   if (!mouse.inside) {
     $('stCoords').textContent = 'X: — — —  |  Y: — — —';
