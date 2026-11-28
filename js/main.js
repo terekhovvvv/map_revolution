@@ -115,10 +115,10 @@ function render() {
   const { ctx, vp, cal } = App;
   const dpr = vp.dpr;
 
-  // Фон «рабочего стола»
+  // Фон «рабочего стола» — прозрачный: сквозь канву виден
+  // тёмно-зелёный градиент с сеткой из CSS (body background)
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#101418';
-  ctx.fillRect(0, 0, vp.w, vp.h);
+  ctx.clearRect(0, 0, vp.w, vp.h);
 
   // ── Карта: рисуем ТОЛЬКО видимый фрагмент исходного битмапа.
   //    drawImage с source-rect — аппаратно ускоряется и не трогает
@@ -181,7 +181,7 @@ function drawGridOverlay(ctx) {
     const n = cal.gridToPixel(b.maxX, Y);
     const sn = vp.imageToScreen(n.x, n.y);
     if (sn.y > -20 && sn.y < vp.h + 20) {
-      ctx.fillStyle = 'rgba(15,20,26,0.8)';
+      ctx.fillStyle = 'rgba(22,26,15,0.85)';
       ctx.fillRect(sn.x - 10, sn.y - 15, 20, 13);
       ctx.fillStyle = '#ff5a6e';
       ctx.fillText(pad2(Y), sn.x, sn.y - 4);
@@ -201,7 +201,7 @@ function drawGridOverlay(ctx) {
     const w = cal.gridToPixel(X, b.minY);   // западный (левый) конец линии
     const sw = vp.imageToScreen(w.x, w.y);
     if (sw.x > -30 && sw.x < vp.w + 30 && sw.y > -10 && sw.y < vp.h + 20) {
-      ctx.fillStyle = 'rgba(15,20,26,0.8)';
+      ctx.fillStyle = 'rgba(22,26,15,0.85)';
       ctx.fillRect(sw.x - 24, sw.y - 10, 20, 13);
       ctx.fillStyle = '#ff5a6e';
       ctx.fillText(pad2(X), sw.x - 22, sw.y + 1);
@@ -306,7 +306,7 @@ function drawHighlight(ctx) {
       ctx.beginPath(); ctx.arc(s.x, s.y, 15, 0, Math.PI * 2); ctx.stroke();
       // значок с номером (правый верхний угол кольца)
       ctx.beginPath(); ctx.arc(s.x + 15, s.y - 15, 9, 0, Math.PI * 2);
-      ctx.fillStyle = '#101418'; ctx.fill();
+      ctx.fillStyle = '#161a0f'; ctx.fill();
       ctx.strokeStyle = '#ffd050'; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.fillStyle = '#ffd050';
       ctx.font = 'bold 11px "Segoe UI", sans-serif';
@@ -344,9 +344,9 @@ function drawRulerTooltip(ctx, hover) {
   const x = App.mouse.sx + 18, y = App.mouse.sy + 22;
   ctx.font = '12px "Segoe UI", sans-serif';
   const w = ctx.measureText(text).width + 12;
-  ctx.fillStyle = 'rgba(15,20,26,0.88)';
+  ctx.fillStyle = 'rgba(22,26,15,0.9)';
   ctx.beginPath(); ctx.roundRect(x, y, w, 20, 5); ctx.fill();
-  ctx.fillStyle = '#7fd4ff'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#e8d48a'; ctx.textAlign = 'left';
   ctx.fillText(text, x + 6, y + 14);
 }
 
